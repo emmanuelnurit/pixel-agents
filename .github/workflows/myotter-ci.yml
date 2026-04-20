@@ -1,0 +1,78 @@
+# MyOtter CI — minimal lint + build gate for the server-mode branch
+#
+# This workflow is fork-specific and does NOT replace the upstream `ci.yml`.
+# It runs only on the `server-mode` branch (and PRs targeting it) so that
+# upstream CI on `main` stays exactly as Pablo De Lucca published it.
+
+name: MyOtter CI
+
+on:
+  push:
+    branches:
+      - server-mode
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'NOTICE.md'
+  pull_request:
+    branches:
+      - server-mode
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'NOTICE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: myotter-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/server-mode' }}
+
+jobs:
+  build:
+    name: lint + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HUSKY: '0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            webview-ui/package-lock.json
+            server/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install webview-ui dependencies
+        working-directory: webview-ui
+        run: npm ci
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run check-types
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build extension (esbuild)
+        run: node esbuild.js
+
+      - name: Build webview-ui
+        run: npm run build:webview
